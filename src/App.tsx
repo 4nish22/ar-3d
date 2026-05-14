@@ -7,18 +7,16 @@ import targetSrc from "./assets/target.mind?url";
 import modelSrc from "./assets/model.glb?url";
 
 export default function App() {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    let renderer: THREE.WebGLRenderer | null = null;
-    let animationFrame: number;
-
-    const clock = new THREE.Clock();
+    let mindarThree: any;
+    let mixer: THREE.AnimationMixer | null = null;
 
     const start = async () => {
-      const mindarThree = new MindARThree({
+      mindarThree = new MindARThree({
         container: containerRef.current!,
         imageTargetSrc: targetSrc,
         uiLoading: true,
@@ -26,23 +24,16 @@ export default function App() {
         uiError: true,
       });
 
-      const { renderer: r, scene, camera } = mindarThree;
-
-      renderer = r;
+      const { renderer, scene, camera } = mindarThree;
 
       // LIGHTS
-      const hemiLight = new THREE.HemisphereLight(
-        0xffffff,
-        0xbbbbff,
-        1
-      );
+      const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+      scene.add(light);
 
-      scene.add(hemiLight);
-
-      // TARGET ANCHOR
+      // TARGET
       const anchor = mindarThree.addAnchor(0);
 
-      // LOAD MODEL
+      // MODEL
       const loader = new GLTFLoader();
 
       loader.load(
@@ -51,55 +42,42 @@ export default function App() {
           const model = gltf.scene;
 
           model.scale.setScalar(0.3);
-
           model.position.set(0, 0, 0);
-
-          model.rotation.set(0, 0, 0);
 
           anchor.group.add(model);
 
-          // OPTIONAL ANIMATION SUPPORT
+          // ANIMATION SUPPORT
           if (gltf.animations.length > 0) {
-            const mixer = new THREE.AnimationMixer(model);
+            mixer = new THREE.AnimationMixer(model);
 
             gltf.animations.forEach((clip) => {
-              mixer.clipAction(clip).play();
+              mixer!.clipAction(clip).play();
             });
-
-            const animate = () => {
-              const delta = clock.getDelta();
-
-              mixer.update(delta);
-
-              renderer?.render(scene, camera);
-
-              animationFrame = requestAnimationFrame(animate);
-            };
-
-            animate();
           }
         },
         undefined,
-        (error) => {
-          console.error("Failed to load GLB:", error);
+        (err) => {
+          console.error("GLB load error:", err);
         }
       );
 
       await mindarThree.start();
 
+      const clock = new THREE.Clock();
+
       renderer.setAnimationLoop(() => {
-        renderer?.render(scene, camera);
+        const delta = clock.getDelta();
+
+        if (mixer) mixer.update(delta);
+
+        renderer.render(scene, camera);
       });
 
-      // CLEANUP
+      // CLEANUP FUNCTION
       return () => {
-        cancelAnimationFrame(animationFrame);
-
-        renderer?.setAnimationLoop(null);
-
-        renderer?.dispose();
-
+        renderer.setAnimationLoop(null);
         mindarThree.stop();
+        renderer.dispose();
       };
     };
 
